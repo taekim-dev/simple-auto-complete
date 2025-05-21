@@ -1,7 +1,7 @@
 const WIKIPEDIA_API_URL = 'https://en.wikipedia.org/w/api.php';
 
 export class ApiService {
-  static async searchWikipedia(searchTerm: string): Promise<string[]> {
+  static async searchWikipedia(searchTerm: string, signal?: AbortSignal): Promise<string[]> {
     if (!searchTerm.trim()) {
       return [];
     }
@@ -21,6 +21,7 @@ export class ApiService {
         headers: {
           'Accept': 'application/json',
         },
+        signal,
       });
 
       if (!response.ok) {
@@ -29,18 +30,17 @@ export class ApiService {
 
       const data = await response.json();
       
-      // Wikipedia OpenSearch returns an array where index 1 contains the titles
       if (Array.isArray(data) && data.length > 1) {
         return data[1];
       }
       
       return [];
     } catch (error) {
-      console.error('Error fetching data:', error);
-      if (error instanceof Error) {
-        console.error('Error message:', error.message);
+      if (error instanceof Error && error.name === 'AbortError') {
+        return [];
       }
-      return [];
+      console.error('Error fetching data:', error);
+      throw error;
     }
   }
 } 

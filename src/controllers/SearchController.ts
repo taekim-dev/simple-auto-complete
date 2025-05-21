@@ -2,7 +2,7 @@ import { ApiService } from '../services/api';
 import { CacheService } from '../services/cache';
 
 export class SearchController {
-  static async getSearchResults(searchTerm: string): Promise<string[]> {
+  static async getSearchResults(searchTerm: string, signal?: AbortSignal): Promise<string[]> {
     if (!searchTerm.trim()) {
       return [];
     }
@@ -14,7 +14,7 @@ export class SearchController {
     }
 
     // If not in cache, fetch from API
-    const results = await ApiService.searchWikipedia(searchTerm);
+    const results = await ApiService.searchWikipedia(searchTerm, signal);
     
     // Cache the results
     if (results.length > 0) {
