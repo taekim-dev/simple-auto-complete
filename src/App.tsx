@@ -6,6 +6,7 @@ import {
   Container,
   Spinner,
   Text,
+  VisuallyHidden,
 } from '@chakra-ui/react';
 import debounce from 'lodash/debounce';
 import { SearchController } from './controllers/SearchController';
@@ -15,7 +16,10 @@ function App() {
   const [results, setResults] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Create a stable debounced search function
   const debouncedSearch = useCallback(
@@ -40,19 +44,17 @@ function App() {
 
       try {
         const searchResults = await SearchController.getSearchResults(term, abortController.signal);
-        // Only update if this is still the current request
         if (abortControllerRef.current === abortController) {
           setResults(searchResults);
+          setSelectedIndex(-1); // Reset selection on new results
         }
       } catch (err) {
-        // Only show error if this is still the current request
         if (abortControllerRef.current === abortController) {
           console.error(err);
           setError('Failed to fetch results. Please try again.');
           setResults([]);
         }
       } finally {
-        // Only update loading state if this is still the current request
         if (abortControllerRef.current === abortController) {
           setIsLoading(false);
           abortControllerRef.current = null;
@@ -65,11 +67,9 @@ function App() {
   // Cleanup function
   useEffect(() => {
     return () => {
-      // Cancel any pending requests
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
-      // Cancel any pending debounced calls
       debouncedSearch.cancel();
     };
   }, [debouncedSearch]);
@@ -82,7 +82,6 @@ function App() {
 
   const handleResultClick = (result: string) => {
     setSearchTerm(result);
-    // Cancel any pending requests when selecting a result
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
@@ -90,29 +89,89 @@ function App() {
     setResults([]);
     setIsLoading(false);
     setError(null);
+    setSelectedIndex(-1);
+    // Announce selection to screen readers
+    announceToScreenReader(`Selected: ${result}`);
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (!results.length) return;
+
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        setSelectedIndex(prev => 
+          prev < results.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        setSelectedIndex(prev => prev > -1 ? prev - 1 : -1);
+        break;
+      case 'Enter':
+        if (selectedIndex >= 0) {
+          handleResultClick(results[selectedIndex]);
+        }
+        break;
+      case 'Escape':
+        setResults([]);
+        setSelectedIndex(-1);
+        inputRef.current?.blur();
+        break;
+    }
+  };
+
+  // Scroll selected item into view
+  useEffect(() => {
+    if (selectedIndex >= 0 && listRef.current) {
+      const selectedElement = listRef.current.children[selectedIndex] as HTMLElement;
+      if (selectedElement) {
+        selectedElement.scrollIntoView({ block: 'nearest' });
+      }
+    }
+  }, [selectedIndex]);
+
+  // Announce to screen readers
+  const announceToScreenReader = (message: string) => {
+    const announcement = document.createElement('div');
+    announcement.setAttribute('aria-live', 'polite');
+    announcement.setAttribute('aria-atomic', 'true');
+    announcement.setAttribute('class', 'visually-hidden');
+    announcement.textContent = message;
+    document.body.appendChild(announcement);
+    setTimeout(() => document.body.removeChild(announcement), 1000);
   };
 
   return (
     <Container maxW="container.md" py={8}>
       <Flex direction="column" gap={4}>
-        <Box position="relative" width="100%">
+        <Box position="relative" width="100%" role="combobox" aria-expanded={results.length > 0} aria-haspopup="listbox" aria-controls="search-results">
+          <VisuallyHidden as="label" htmlFor="search-input">
+            Search Wikipedia
+          </VisuallyHidden>
           <Input
+            id="search-input"
+            ref={inputRef}
             value={searchTerm}
             onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
             placeholder="Start typing to search..."
             size="lg"
             borderRadius="md"
             isDisabled={isLoading}
+            aria-autocomplete="list"
+            aria-controls="search-results"
+            aria-activedescendant={selectedIndex >= 0 ? `result-${selectedIndex}` : undefined}
           />
           
           {isLoading && (
-            <Flex justify="center" mt={4}>
-              <Spinner />
+            <Flex justify="center" mt={4} aria-live="polite">
+              <Spinner aria-label="Loading results" />
             </Flex>
           )}
 
           {error && (
-            <Text color="red.500" mt={2} fontSize="sm">
+            <Text color="red.500" mt={2} fontSize="sm" role="alert">
               {error}
             </Text>
           )}
@@ -120,6 +179,10 @@ function App() {
           {!isLoading && !error && results.length > 0 && (
             <Box
               as="ul"
+              id="search-results"
+              ref={listRef}
+              role="listbox"
+              aria-label="Search suggestions"
               listStyleType="none"
               position="absolute"
               top="100%"
@@ -140,8 +203,12 @@ function App() {
               {results.map((result, index) => (
                 <Box
                   as="li"
+                  id={`result-${index}`}
                   key={index}
+                  role="option"
+                  aria-selected={index === selectedIndex}
                   p={3}
+                  bg={index === selectedIndex ? 'gray.100' : 'transparent'}
                   _hover={{ bg: 'gray.100' }}
                   cursor="pointer"
                   onClick={() => handleResultClick(result)}
