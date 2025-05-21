@@ -1,32 +1,36 @@
-export class CacheService {
-  private static PREFIX = 'autocomplete_';
+import { DBService } from './db';
 
-  static set(key: string, value: unknown, expirationInMinutes: number = 30): void {
-    const item = {
-      value,
-      timestamp: new Date().getTime(),
-      expirationInMinutes,
-    };
-    sessionStorage.setItem(this.PREFIX + key, JSON.stringify(item));
+export class CacheService {
+  static async set(key: string, value: string[]): Promise<void> {
+    try {
+      await DBService.set(key, value);
+    } catch (error) {
+      console.error('Error caching data:', error);
+    }
   }
 
-  static get(key: string): unknown | null {
-    const item = sessionStorage.getItem(this.PREFIX + key);
-    if (!item) return null;
-
-    const parsedItem = JSON.parse(item);
-    const now = new Date().getTime();
-    const expirationTime = parsedItem.timestamp + (parsedItem.expirationInMinutes * 60 * 1000);
-
-    if (now > expirationTime) {
-      this.remove(key);
+  static async get(key: string): Promise<string[] | null> {
+    try {
+      return await DBService.get(key);
+    } catch (error) {
+      console.error('Error retrieving cached data:', error);
       return null;
     }
-
-    return parsedItem.value;
   }
 
-  static remove(key: string): void {
-    sessionStorage.removeItem(this.PREFIX + key);
+  static async remove(key: string): Promise<void> {
+    try {
+      await DBService.remove(key);
+    } catch (error) {
+      console.error('Error removing cached data:', error);
+    }
+  }
+
+  static async clearExpired(): Promise<void> {
+    try {
+      await DBService.clearExpired();
+    } catch (error) {
+      console.error('Error clearing expired cache:', error);
+    }
   }
 } 
